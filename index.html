@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhotoBooker - Photographer Availability</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase SDKs (Compat version for easier HTML usage) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- 1. CONFIGURATION SECTION ---
+        
+        // IMPORTANT FOR DEPLOYMENT:
+        // Jab aap is file ko GitHub Pages par host karein, toh niche diye gaye 
+        // 'userProvidedConfig' object mein apni Firebase Console se keys copy karke paste karein.
+        const userProvidedConfig = {
+            apiKey: "AIzaSyBus9Jrp4UM5y0SFl1NTrKC8UK1mGAYMnA",
+            authDomain: "photobooker-6d49a.firebaseapp.com",
+            projectId: "photobooker-6d49a",
+            storageBucket: "photobooker-6d49a.firebasestorage.app",
+            messagingSenderId: "142506832682",
+            appId: "1:142506832682:web:0522f5175f5aef9679a453",
+            measurementId: "G-RC9G5F1VBZ"
+        };
+
+        // --- AUTOMATIC ENV DETECTION ---
+        // Yeh logic check karta hai ki app kahan chal raha hai.
+        let firebaseConfig;
+        let isImmersiveEnv = false;
+
+        if (typeof __firebase_config !== 'undefined') {
+            // Agar Immersive Preview mein hai, toh internal config use karein
+            firebaseConfig = JSON.parse(__firebase_config);
+            isImmersiveEnv = true;
+        } else {
+            // Agar GitHub/Public hai, toh user ki keys use karein
+            firebaseConfig = userProvidedConfig;
+        }
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            try {
+                firebase.initializeApp(firebaseConfig);
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
+            }
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- DYNAMIC COLLECTION HELPER ---
+        // Yeh function ensure karta hai ki database sahi jagah connect ho
+        const getCollectionRef = (collectionName) => {
+            if (isImmersiveEnv && typeof __app_id !== 'undefined') {
+                // Immersive Environment Path (Strict Rule)
+                return db.collection('artifacts').doc(__app_id).collection('public').doc('data').collection(collectionName);
+            } else {
+                // Production Path (Standard Root Collections for your own Firebase)
+                return db.collection(collectionName);
+            }
+        };
+
+        // --- ICONS (SVG Components) ---
+        const Icon = ({ path, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Calendar: () => <Icon path={<><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></>} className="w-5 h-5" />,
+            User: () => <Icon path={<><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></>} className="w-5 h-5" />,
+            LogOut: () => <Icon path={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></>} className="w-4 h-4" />,
+            Check: () => <Icon path={<polyline points="20 6 9 17 4 12"></polyline>} className="w-3 h-3" />,
+            X: () => <Icon path={<><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></>} className="w-3 h-3" />,
+            ChevronLeft: () => <Icon path={<polyline points="15 18 9 12 15 6"></polyline>} className="w-6 h-6" />,
+            ChevronRight: () => <Icon path={<polyline points="9 18 15 12 9 6"></polyline>} className="w-6 h-6" />,
+            Shield: () => <Icon path={<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>} className="w-5 h-5" />,
+            Camera: () => <Icon path={<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></>} className="w-8 h-8" />,
+            ArrowRight: () => <Icon path={<><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></>} className="w-4 h-4" />,
+            AlertCircle: () => <Icon path={<><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></>} className="w-12 h-12" />
+        };
+
+        // --- HELPER FUNCTIONS ---
+        const { useState, useEffect, useMemo } = React;
+
+        const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+        const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        const formatDate = (date) => {
+            const d = new Date(date);
+            let month = '' + (d.getMonth() + 1);
+            let day = '' + d.getDate();
+            const year = d.getFullYear();
+            if (month.length < 2) month = '0' + month;
+            if (day.length < 2) day = '0' + day;
+            return [year, month, day].join('-');
+        };
+
+        // --- COMPONENTS ---
+
+        // Login Screen
+        const LoginScreen = ({ onLogin, isLoggingIn }) => {
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+                        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg transform -rotate-3">
+                            <Icons.Camera className="text-white" />
+                        </div>
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">PhotoBooker</h1>
+                        <p className="text-gray-500 mb-8">Photographer Availability & Management</p>
+                        
+                        <div className="space-y-4">
+                            <button 
+                                onClick={onLogin}
+                                disabled={isLoggingIn}
+                                className="w-full bg-blue-600 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-700 transition duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isLoggingIn ? 'Signing In...' : <><span>Sign In / Get Started</span><Icons.ArrowRight className="text-white" /></>}
+                            </button>
+                            <p className="text-xs text-gray-400 mt-4">Powered by Firebase & GitHub Pages</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Onboarding
+        const Onboarding = ({ user, onComplete }) => {
+            const [formData, setFormData] = useState({ name: '', email: '', phone: '', role: 'photographer' });
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                try {
+                    // Use dynamic collection helper
+                    await getCollectionRef('users').doc(user.uid).set({
+                        ...formData,
+                        uid: user.uid,
+                        createdAt: new Date().toISOString()
+                    });
+                    onComplete();
+                } catch (error) {
+                    console.error("Error creating profile:", error);
+                    alert("Error creating profile: " + error.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Create Your Profile</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                                <input required type="text" className="mt-1 block w-full rounded-md border border-gray-300 p-2" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Email</label>
+                                <input required type="email" className="mt-1 block w-full rounded-md border border-gray-300 p-2" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                                <input required type="tel" className="mt-1 block w-full rounded-md border border-gray-300 p-2" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Role</label>
+                                <select className="mt-1 block w-full rounded-md border border-gray-300 p-2" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                                    <option value="photographer">Photographer</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                            <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">
+                                {loading ? 'Setting up...' : 'Get Started'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // Calendar View
+        const CalendarView = ({ user }) => {
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [bookedDates, setBookedDates] = useState([]);
+            
+            useEffect(() => {
+                if (!user) return;
+                // Use dynamic collection helper
+                const unsubscribe = getCollectionRef('booked_dates').where("userId", "==", user.uid)
+                    .onSnapshot(snapshot => {
+                        const bookings = [];
+                        snapshot.forEach(doc => bookings.push(doc.data().date));
+                        setBookedDates(bookings);
+                    }, error => console.error("Error loading dates:", error));
+                return () => unsubscribe();
+            }, [user]);
+
+            const toggleDate = async (day) => {
+                const dateStr = formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+                const isBooked = bookedDates.includes(dateStr);
+                const docId = `${user.uid}_${dateStr}`;
+
+                try {
+                    const collectionRef = getCollectionRef('booked_dates');
+                    if (isBooked) {
+                        await collectionRef.doc(docId).delete();
+                    } else {
+                        await collectionRef.doc(docId).set({
+                            date: dateStr,
+                            userId: user.uid,
+                            updatedAt: new Date().toISOString()
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error toggling:", err);
+                    alert("Permission Error: Ensure Firestore rules allow writing.");
+                }
+            };
+
+            const renderCalendar = () => {
+                const daysInMonth = getDaysInMonth(currentDate);
+                const firstDay = getFirstDayOfMonth(currentDate);
+                const days = [];
+                for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 border border-gray-100"></div>);
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+                    const isBooked = bookedDates.includes(dateStr);
+                    days.push(
+                        <div key={day} onClick={() => toggleDate(day)} className={`h-24 border border-gray-100 p-2 cursor-pointer relative group ${isBooked ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-green-50'}`}>
+                            <span className={`text-sm font-semibold rounded-full w-7 h-7 flex items-center justify-center ${isBooked ? 'bg-red-500 text-white' : 'text-gray-700'}`}>{day}</span>
+                            <div className="mt-2 text-xs font-medium text-center">
+                                {isBooked ? <span className="text-red-600 flex items-center justify-center gap-1"><Icons.X /> Busy</span> : <span className="text-green-600 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100"><Icons.Check /> Free</span>}
+                            </div>
+                        </div>
+                    );
+                }
+                return days;
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm">
+                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 hover:bg-gray-100 rounded-full"><Icons.ChevronLeft /></button>
+                        <h2 className="text-xl font-bold text-gray-800">{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 hover:bg-gray-100 rounded-full"><Icons.ChevronRight /></button>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div className="grid grid-cols-7 bg-gray-50 border-b">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-3 text-center text-xs font-bold text-gray-500 uppercase">{d}</div>)}</div>
+                        <div className="grid grid-cols-7">{renderCalendar()}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Admin Dashboard
+        const AdminDashboard = () => {
+            const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
+            const [users, setUsers] = useState([]);
+            const [allBookings, setAllBookings] = useState([]);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                // Use dynamic collection helper
+                const usersUnsub = getCollectionRef('users').onSnapshot(snap => {
+                    const userData = [];
+                    snap.forEach(doc => userData.push(doc.data()));
+                    setUsers(userData);
+                }, err => {
+                    console.error("Admin Users Error:", err);
+                    setError("Failed to load users.");
+                });
+
+                const bookingsUnsub = getCollectionRef('booked_dates').onSnapshot(snap => {
+                    const bookingData = [];
+                    snap.forEach(doc => bookingData.push(doc.data()));
+                    setAllBookings(bookingData);
+                }, err => {
+                    console.error("Admin Bookings Error:", err);
+                    setError("Failed to load bookings.");
+                });
+
+                return () => { usersUnsub(); bookingsUnsub(); };
+            }, []);
+
+            const availabilityReport = useMemo(() => {
+                return users.map(user => ({
+                    ...user,
+                    isBusy: allBookings.some(b => b.userId === user.uid && b.date === selectedDate)
+                }));
+            }, [users, allBookings, selectedDate]);
+
+            if (error) return <div className="p-4 bg-red-100 text-red-700 text-center">{error}</div>;
+
+            return (
+                <div className="max-w-4xl mx-auto space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><Icons.Shield className="text-indigo-600"/> Admin Dashboard</h2>
+                        <div className="mb-6"><label className="block text-sm font-medium mb-1">Check Date:</label><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="block w-full rounded-md border border-gray-300 p-2" /></div>
+                        <div className="overflow-hidden rounded-lg border border-gray-200">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Photographer</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th></tr></thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {availabilityReport.map(user => (
+                                        <tr key={user.uid}>
+                                            <td className="px-6 py-4"><div className="font-medium text-gray-900">{user.name}</div><div className="text-xs text-gray-500">{user.role}</div></td>
+                                            <td className="px-6 py-4"><div className="text-sm text-gray-900">{user.email}</div><div className="text-sm text-gray-500">{user.phone}</div></td>
+                                            <td className="px-6 py-4">{user.isBusy ? <span className="px-2 text-xs font-semibold rounded-full bg-red-100 text-red-800">Busy</span> : <span className="px-2 text-xs font-semibold rounded-full bg-green-100 text-green-800">Available</span>}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Profile
+        const Profile = ({ user, userProfile }) => {
+            const [editing, setEditing] = useState(false);
+            const [formData, setFormData] = useState({ ...userProfile });
+
+            const handleUpdate = async () => {
+                // Use dynamic collection helper
+                await getCollectionRef('users').doc(user.uid).set({ ...formData }, { merge: true });
+                setEditing(false);
+            };
+
+            const handleLogout = async () => {
+                await auth.signOut();
+                window.location.reload();
+            };
+
+            return (
+                <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm p-8">
+                    <div className="flex justify-between items-center mb-8">
+                        <h2 className="text-2xl font-bold text-gray-800">My Profile</h2>
+                        <button onClick={handleLogout} className="flex items-center gap-2 text-red-600 hover:text-red-700"><Icons.LogOut /> Logout</button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div><label className="block text-sm font-medium text-gray-700">Name</label><input disabled={!editing} type="text" className={`mt-1 w-full rounded-md border p-2 ${editing ? 'bg-white' : 'bg-gray-50'}`} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700">Phone</label><input disabled={!editing} type="tel" className={`mt-1 w-full rounded-md border p-2 ${editing ? 'bg-white' : 'bg-gray-50'}`} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700">Role</label><select disabled={!editing} className={`mt-1 w-full rounded-md border p-2 ${editing ? 'bg-white' : 'bg-gray-50'}`} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}><option value="photographer">Photographer</option><option value="admin">Admin</option></select></div>
+                        <div><label className="block text-sm font-medium text-gray-700">Email</label><input disabled type="email" className="mt-1 w-full rounded-md border p-2 bg-gray-100 text-gray-500" value={formData.email} /></div>
+                    </div>
+                    {editing ? <div className="flex justify-end gap-3"><button onClick={() => setEditing(false)} className="text-gray-600">Cancel</button><button onClick={handleUpdate} className="bg-blue-600 text-white px-4 py-2 rounded-md">Save</button></div> : <button onClick={() => setEditing(true)} className="w-full bg-gray-800 text-white px-4 py-2 rounded-md">Edit Profile</button>}
+                </div>
+            );
+        };
+
+        // Main App
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [userProfile, setUserProfile] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [view, setView] = useState('calendar');
+
+            useEffect(() => {
+                const initAuth = async () => {
+                   if (isImmersiveEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                       await auth.signInWithCustomToken(__initial_auth_token);
+                   }
+                };
+                initAuth();
+
+                const unsubAuth = auth.onAuthStateChanged(currUser => {
+                    setUser(currUser);
+                    if (currUser) {
+                        // Use dynamic collection helper
+                        const unsubProfile = getCollectionRef('users').doc(currUser.uid).onSnapshot(doc => {
+                            if (doc.exists) setUserProfile(doc.data());
+                            else setUserProfile(null);
+                            setLoading(false);
+                        }, err => {
+                            console.error("Profile load error:", err);
+                            setLoading(false);
+                        });
+                        return () => unsubProfile();
+                    } else {
+                        setLoading(false);
+                    }
+                });
+                return () => unsubAuth();
+            }, []);
+
+            const performLogin = async () => {
+                try {
+                    if (isImmersiveEnv) {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                             await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                             await auth.signInAnonymously();
+                        }
+                    } else {
+                        // For public GitHub deployment, allow anonymous login
+                        // Make sure Anonymous auth is enabled in your Firebase Console
+                        await auth.signInAnonymously();
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("Login failed: " + e.message);
+                }
+            };
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+            if (!user) return <LoginScreen onLogin={performLogin} isLoggingIn={false} />;
+            if (user && !userProfile) return <Onboarding user={user} onComplete={() => {}} />;
+
+            return (
+                <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+                    <nav className="bg-white shadow-sm sticky top-0 z-50">
+                        <div className="max-w-5xl mx-auto px-4 h-16 flex justify-between items-center">
+                            <div className="flex items-center gap-2"><div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><Icons.Calendar className="text-white"/></div><span className="font-bold text-lg">PhotoBooker</span></div>
+                            <div className="flex space-x-1">
+                                <button onClick={() => setView('calendar')} className={`px-4 py-2 rounded-md text-sm font-medium ${view === 'calendar' ? 'bg-blue-50 text-blue-700' : 'text-gray-500'}`}>My Calendar</button>
+                                {userProfile?.role === 'admin' && <button onClick={() => setView('admin')} className={`px-4 py-2 rounded-md text-sm font-medium ${view === 'admin' ? 'bg-blue-50 text-blue-700' : 'text-gray-500'}`}>Dashboard</button>}
+                                <button onClick={() => setView('profile')} className={`px-4 py-2 rounded-md text-sm font-medium ${view === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-gray-500'}`}>Profile</button>
+                            </div>
+                        </div>
+                    </nav>
+                    <main className="max-w-5xl mx-auto px-4 py-8">
+                        {view === 'calendar' && <CalendarView user={user} />}
+                        {view === 'admin' && (userProfile.role === 'admin' ? <AdminDashboard /> : <div className="text-red-500">Access Denied</div>)}
+                        {view === 'profile' && <Profile user={user} userProfile={userProfile} />}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
